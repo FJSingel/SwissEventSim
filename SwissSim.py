@@ -41,8 +41,6 @@ def main(argv):
 				value = int(data[rowindex][columnindex])
 			mudata[(activeplayer, passiveplayer)] = value
 
-			print activeplayer + " vs " + passiveplayer + ": " + data[rowindex][columnindex]
-
 	metashare = {}
 	for archetype in archetypes:
 		# #10 means 10 decks, 12.5% means that much of the field
@@ -50,14 +48,53 @@ def main(argv):
 
 	if verbose:
 		visualize_data(mudata, archetypes)
+
 	validate(mudata, archetypes, metashare)
 
+	if verbose:
+		print "\nGenerating deck counts from input"
 	deckcounts = generate_deck_counts(metashare, attendance)
 
 	if verbose:
+		print "\nCounts of decks by archetype"
 		for key in deckcounts:
 			print key + ':' + str(deckcounts[key])
 
+	playerlist = generate_players(deckcounts)
+	if verbose:
+		print "\nGenerated players\nPlayer: Archetype"
+		for player in playerlist:
+			print "{0}: {1}".format(player.id, player.archetype)
+
+class Player(object):
+	'''
+	Object to represent a player
+	'''
+	playercount = 0
+	def __init__(self, archetype):
+		self.id = Player.playercount
+		Player.playercount += 1
+		self.archetype = archetype
+		self.wins = 0
+		self.losses = 0
+		self.draws = 0
+		self.points = 0
+		self.opponentids = []
+		#Tiebreakers?
+
+	def calculate_omw():
+		return []
+
+	def calculate_ogw():
+		#This is actually hard to simulate given MW%
+		return []
+
+def generate_players(deckcounts):
+	playerlist = []
+	for key in deckcounts:
+		for x in xrange(deckcounts[key]):
+			playerlist.append(Player(key))
+	return playerlist
 
 def generate_deck_counts(metashare, attendance):
 	meta_dict = {}
@@ -81,8 +118,8 @@ def generate_deck_counts(metashare, attendance):
 				meta_dict[archetype] = meta_dict[archetype] + 1
 				break
 
-	for key in weighted_pairs:
-		print key
+	for pair in weighted_pairs:
+		print pair
 
 	return meta_dict
 
@@ -98,6 +135,7 @@ def validate(mudata, archetypes, metashare):
 		raise ValueError("Duplicate archetypes given")
 
 def visualize_data(data, archetypes):
+	print "\nMatchup grid"
 	header = "\t"
 	for archetype in archetypes:
 		header += archetype[:7] + "\t"
@@ -112,6 +150,7 @@ def visualize_data(data, archetypes):
 
 def invalid_args():
 	print "Usage: SwissSim <fileName>"
+	exit(0)
 
 if __name__ == "__main__":
 	if len(sys.argv) <= 1:
