@@ -1,4 +1,5 @@
 import csv, sys
+import copy
 import re
 import random
 
@@ -12,7 +13,7 @@ def main(argv):
 	try:
 		filename = argv[0]
 	except IndexError:
-		invalid_args()
+		_invalid_args()
 
 	verbose = True
 	datafile = open(filename, 'r')
@@ -47,24 +48,28 @@ def main(argv):
 		metashare[archetype] = mudata[(archetype, archetype)]
 
 	if verbose:
-		visualize_data(mudata, archetypes)
+		_visualize_data(mudata, archetypes)
 
-	validate(mudata, archetypes, metashare)
+	_validate(mudata, archetypes, metashare)
 
 	if verbose:
 		print "\nGenerating deck counts from input"
-	deckcounts = generate_deck_counts(metashare, attendance)
+	deckcounts = _generate_deck_counts(metashare, attendance)
 
 	if verbose:
 		print "\nCounts of decks by archetype"
 		for key in deckcounts:
 			print key + ':' + str(deckcounts[key])
 
-	playerlist = generate_players(deckcounts)
+	playerlist = _generate_players(deckcounts)
 	if verbose:
 		print "\nGenerated players\nPlayer: Archetype"
 		for player in playerlist:
 			print "{0}: {1}".format(player.id, player.archetype)
+
+	#Write a method to simulate a round now
+	#Should I just be using a DB backend?
+
 
 class Player(object):
 	'''
@@ -89,14 +94,30 @@ class Player(object):
 		#This is actually hard to simulate given MW%
 		return []
 
-def generate_players(deckcounts):
+class PlayerList(object):
+	'''
+	Object to represent all attendees with helper functions as well
+	'''
+	def __init__(self, playerlist):
+		self.playerlist = copy.copy(playerlist)
+		self.pointsmap = {0: copy.copy(playerlist)}
+
+	def get_players_with_points(points):
+		pass
+
+	def generate_pairings():
+		pairings = {}
+		for key in pointsmap:
+			pass
+
+def _generate_players(deckcounts):
 	playerlist = []
 	for key in deckcounts:
 		for x in xrange(deckcounts[key]):
 			playerlist.append(Player(key))
 	return playerlist
 
-def generate_deck_counts(metashare, attendance):
+def _generate_deck_counts(metashare, attendance):
 	meta_dict = {}
 	totalpct = 0
 	undecidedplayers = int(attendance)
@@ -123,7 +144,7 @@ def generate_deck_counts(metashare, attendance):
 
 	return meta_dict
 
-def validate(mudata, archetypes, metashare):
+def _validate(mudata, archetypes, metashare):
 	totalregex = re.compile('^#\d+$') #Regex for a specific number of decks
 	pctregex = re.compile('^\d{1,2}(\.\d\d)?%$') #Regex for 
 	for key in metashare:
@@ -134,7 +155,7 @@ def validate(mudata, archetypes, metashare):
 	if len(set(archetypes)) != len(archetypes):
 		raise ValueError("Duplicate archetypes given")
 
-def visualize_data(data, archetypes):
+def _visualize_data(data, archetypes):
 	print "\nMatchup grid"
 	header = "\t"
 	for archetype in archetypes:
@@ -148,7 +169,7 @@ def visualize_data(data, archetypes):
 			line += text + "\t"
 		print line
 
-def invalid_args():
+def _invalid_args():
 	print "Usage: SwissSim <fileName>"
 	exit(0)
 
