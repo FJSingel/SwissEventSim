@@ -1,5 +1,6 @@
 import csv, sys
 import copy
+import math
 import re
 import random
 
@@ -64,11 +65,20 @@ def main(argv):
 	playerlist = _generate_players(deckcounts)
 	if verbose:
 		print "\nGenerated players\nPlayer: Archetype"
-		for player in playerlist:
-			print "{0}: {1}".format(player.id, player.archetype)
+		for player in playerlist.playerlist:
+			print "{}: {}".format(player.id, player.archetype)
 
 	#Write a method to simulate a round now
 	#Should I just be using a DB backend?
+	rounds = math.ceil(math.log(len(playerlist), 2))
+	print rounds
+	pairings = playerlist.generate_pairings()
+
+	if verbose:
+		for pair in pairings:
+			print "{} vs {}".format(pair[0].id, pair[1].id)
+
+	results = _process_pairings(pairings, mudata)
 
 
 class Player(object):
@@ -98,24 +108,49 @@ class PlayerList(object):
 	'''
 	Object to represent all attendees with helper functions as well
 	'''
+
 	def __init__(self, playerlist):
 		self.playerlist = copy.copy(playerlist)
 		self.pointsmap = {0: copy.copy(playerlist)}
 
 	def get_players_with_points(points):
-		pass
+		return self.pointsmap[points]
 
-	def generate_pairings():
-		pairings = {}
-		for key in pointsmap:
-			pass
+	def generate_pairings(self):
+		pairings = []
+		paireddownplayer = ""
+		for pointtotal in self.pointsmap.keys()[::-1]:		#Pair players by high points first
+			playerpool = copy.copy(self.pointsmap[pointtotal])
+			random.shuffle(playerpool)
+			if paireddownplayer != "":
+				pairedupplayer = playerpool.pop()
+				pairings.append[{pairedupplayer, paireddownplayer}]
+				paireddownplayer = ""
+				#TODO mulligan if they've played before to increase accuracy
+
+			while len(playerpool) > 1:
+				p1 = playerpool.pop()
+				p2 = playerpool.pop()
+				pairings.append([p1, p2])
+
+			if len(playerpool) == 1:
+				paireddownplayer = playerpool.pop()
+
+		if paireddownplayer != "":
+			#TODO Implement BYE instead of dropping
+			print "Dropped player {}".format(paireddownplayer.id)
+
+		return pairings
+
+	def __len__(self):
+		return len(self.playerlist)
 
 def _generate_players(deckcounts):
 	playerlist = []
 	for key in deckcounts:
 		for x in xrange(deckcounts[key]):
 			playerlist.append(Player(key))
-	return playerlist
+	return PlayerList(playerlist)
 
 def _generate_deck_counts(metashare, attendance):
 	meta_dict = {}
@@ -169,12 +204,18 @@ def _visualize_data(data, archetypes):
 			line += text + "\t"
 		print line
 
+def _process_pairings(pairings, mudata):
+	for pairing in pairings:
+		wpct = mudata[pairing[0].archetype][pairing[1].archetype]
+		#in progress
+	return {}
+
 def _invalid_args():
 	print "Usage: SwissSim <fileName>"
 	exit(0)
 
 if __name__ == "__main__":
 	if len(sys.argv) <= 1:
-		show_usage()
+		_invalid_args
 	else:
 		main(sys.argv[1:])
