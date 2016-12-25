@@ -59,27 +59,37 @@ def main(argv):
 
 	if verbose:
 		print "\nCounts of decks by archetype"
+		total = 0
 		for key in deckcounts:
+			total += deckcounts[key]
 			print key + ':' + str(deckcounts[key])
-
+		print total
 	playerlist = _generate_players(deckcounts)
-	if verbose:
-		print "\nGenerated players\nPlayer: Archetype"
-		for player in playerlist.playerlist:
-			print "{}: {}".format(player.id, player.archetype)
+	print "{} players entered".format(len(playerlist))
+	# if verbose:
+	# 	print "\nGenerated players\nPlayer: Archetype"
+	# 	for player in playerlist.playerlist:
+	# 		print "{}: {}".format(player.id, player.archetype)
 
 	#Write a method to simulate a round now
 	#Should I just be using a DB backend?
-	rounds = math.ceil(math.log(len(playerlist), 2))
+	rounds = int(math.ceil(math.log(len(playerlist), 2)))
 	print rounds
-	pairings = playerlist.generate_pairings()
 
-	if verbose:
-		for pair in pairings:
-			print "{} vs {}".format(pair[0].id, pair[1].id)
+	for round_num in xrange(rounds):
+		print "\nRound #{}".format(round_num+1)
+		pairings = playerlist.generate_pairings()
 
-	results = _process_pairings(pairings, mudata)
+		# if verbose:
+		# 	for pair in pairings:
+		# 		print "{} vs {}".format(pair[0].id, pair[1].id)
 
+		results = playerlist.process_pairings(pairings, mudata)
+
+
+
+	standings = playerlist.generate_standings()
+	_print_standings(standings)
 
 class Player(object):
 	'''
@@ -95,14 +105,28 @@ class Player(object):
 		self.draws = 0
 		self.points = 0
 		self.opponentids = []
+		self.owm = 0
 		#Tiebreakers?
 
-	def calculate_omw():
-		return []
+	def defeats(self, opponent):
+		self.wins += 1
+		self.points += 3
+		self.opponentids.append(opponent.id)
+		opponent.losses += 1
+		opponent.opponentids.append(self.id)
+
+	def calculate_omw(self, playerlist):
+		oppwins = 0
+		opplosses = 0
+		for id in self.opponentids:
+			oppwins += playerlist[id].wins
+			opplosses += playerlist[id].losses
+		self.omw = float(oppwins) / float(oppwins+opplosses)
+		return self.omw
 
 	def calculate_ogw():
 		#This is actually hard to simulate given MW%
-		return []
+		pass
 
 class PlayerList(object):
 	'''
@@ -113,18 +137,39 @@ class PlayerList(object):
 		self.playerlist = copy.copy(playerlist)
 		self.pointsmap = {0: copy.copy(playerlist)}
 
+	def regen_pointsmap(self):
+		'''
+		Regenerate the pointsmap from the current playerlist
+		'''
+		self.pointsmap = {}
+		for player in self.playerlist:
+			try:
+				self.pointsmap[player.points].append(player)
+			except KeyError:
+				self.pointsmap[player.points] = [player]
+
 	def get_players_with_points(points):
 		return self.pointsmap[points]
+
+	def generate_standings(self):
+		self.regen_pointsmap()
+		standings = []
+		for pointtotal in self.pointsmap.keys()[::-1]:
+			print "Adding points of {}: {} players".format(pointtotal, len(self.pointsmap[pointtotal]))
+			standings.extend(sorted(self.pointsmap[pointtotal], key=lambda x: x.calculate_omw(self.playerlist), reverse=True))
+			print "ID: {}".format(standings[-1].id)
+		return standings
 
 	def generate_pairings(self):
 		pairings = []
 		paireddownplayer = ""
+		self.regen_pointsmap()
 		for pointtotal in self.pointsmap.keys()[::-1]:		#Pair players by high points first
 			playerpool = copy.copy(self.pointsmap[pointtotal])
 			random.shuffle(playerpool)
 			if paireddownplayer != "":
 				pairedupplayer = playerpool.pop()
-				pairings.append[{pairedupplayer, paireddownplayer}]
+				pairings.append((pairedupplayer, paireddownplayer))
 				paireddownplayer = ""
 				#TODO mulligan if they've played before to increase accuracy
 
@@ -142,6 +187,23 @@ class PlayerList(object):
 
 		return pairings
 
+	def process_pairings(self, pairings, mudata):
+		points_earned = {0:[], 1:[], 3:[]}
+		for pairing in pairings:
+			wpct = mudata[(pairing[0].archetype, pairing[1].archetype)]
+			p1_id = pairing[0].id
+			p2_id = pairing[1].id
+
+			if random.random() <= wpct:
+				self.playerlist[p1_id].defeats(self.playerlist[p2_id])
+				points_earned[3].append(pairing[0])	#winner
+				points_earned[0].append(pairing[1]) #loser
+			else:
+				self.playerlist[p2_id].defeats(self.playerlist[p1_id])
+				points_earned[3].append(pairing[1])	#winner
+				points_earned[0].append(pairing[0]) #loser
+		return points_earned
+
 	def __len__(self):
 		return len(self.playerlist)
 
@@ -156,8 +218,11 @@ def _generate_deck_counts(metashare, attendance):
 	meta_dict = {}
 	totalpct = 0
 	undecidedplayers = int(attendance)
+	print "{} undecided players".format(undecidedplayers)
 	weighted_pairs = []
+	# Assign the static counts of players first
 	for archetype in metashare:
+		print "Assigning archetype {}".format(archetype)
 		weight = metashare[archetype]
 		if weight[0] == '#':
 			meta_dict[archetype] = int(weight[1:])
@@ -167,16 +232,34 @@ def _generate_deck_counts(metashare, attendance):
 			totalpct += float(weight[:-1])
 			weighted_pairs.append((archetype, totalpct))
 
+	print "{} undecided players about to be given weighted decks".format(undecidedplayers)
 	for x in xrange(undecidedplayers):
-		r = random.random() * undecidedplayers
+		r = random.random() * 100
+
+		'''
+		Meta distribution brackets looks like this (weighted_pairs)
+		('Miracles', 14.22)
+		('Lands', 18.01)
+		('Chaff', 48.34)
+		('Grixis Delver', 55.92)
+		('UR Delver', 59.71)
+		('Maverick', 62.08)
+		('BUG Delver', 65.39999999999999)
+		('Burn', 68.71999999999998)
+		('Eldrazi', 77.24999999999999)
+		('Storm', 83.40999999999998)
+		('Aluren', 85.77999999999999)
+		('Shardless BUG', 91.46999999999998)
+		('Death and Taxes', 93.83999999999999)
+		('4c Loam', 96.21)
+		('Sneak and Show', 100.0)
+		'''
+
+		#Cascade through dict to find the correct bracket the value belongs in
 		for archetype, ceil in weighted_pairs:
 			if ceil > r:
 				meta_dict[archetype] = meta_dict[archetype] + 1
 				break
-
-	for pair in weighted_pairs:
-		print pair
-
 	return meta_dict
 
 def _validate(mudata, archetypes, metashare):
@@ -204,11 +287,11 @@ def _visualize_data(data, archetypes):
 			line += text + "\t"
 		print line
 
-def _process_pairings(pairings, mudata):
-	for pairing in pairings:
-		wpct = mudata[pairing[0].archetype][pairing[1].archetype]
-		#in progress
-	return {}
+def _print_standings(standings):
+	print "\nStandings:"
+	print "Place\t|Points\t|OMW\t\t|Archetype"
+	for index, player in enumerate(standings):
+		print "{}:\t{}\t{}\t{} (#{})".format(index+1, player.points, player.omw, player.archetype, player.id)
 
 def _invalid_args():
 	print "Usage: SwissSim <fileName>"
