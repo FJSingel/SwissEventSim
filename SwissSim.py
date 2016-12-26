@@ -9,7 +9,10 @@ import random
 #IDs seems hard to simulate.
 #Have an option for a Day 2 cut and sim again?
 #Have an option for a T8 cut and sim again?
+verbose = False
+
 def main(argv):
+	global verbose
 	#Parse data
 	try:
 		filename = argv[0]
@@ -24,7 +27,7 @@ def main(argv):
 		data.append(row)
 		if len(data) == 1:
 			archetypes = data[0][1:]
-			attendance = data[0][0]
+			attendance = int(data[0][0])
 		else:
 			assert row[0] in archetypes
 
@@ -43,10 +46,21 @@ def main(argv):
 				value = int(data[rowindex][columnindex])
 			mudata[(activeplayer, passiveplayer)] = value
 
+	#Insert player to use for BYEs if odd #
+	for archetype in archetypes:
+		mudata[("BYE", archetype)] = 0
+		mudata[(archetype, "BYE")] = 100
+	needbye = attendance%2
+	attendance += needbye
+	mudata[("BYE", "BYE")] = "#" + str(needbye) #Add one if there's an odd number of players
+
+	archetypes.append("BYE")
+
 	metashare = {}
 	for archetype in archetypes:
 		# #10 means 10 decks, 12.5% means that much of the field
 		metashare[archetype] = mudata[(archetype, archetype)]
+		mudata[(archetype, archetype)] = 50
 
 	if verbose:
 		_visualize_data(mudata, archetypes)
@@ -57,36 +71,27 @@ def main(argv):
 		print "\nGenerating deck counts from input"
 	deckcounts = _generate_deck_counts(metashare, attendance)
 
+	#Create player for Byes if needed
+
 	if verbose:
 		print "\nCounts of decks by archetype"
 		total = 0
 		for key in deckcounts:
 			total += deckcounts[key]
 			print key + ':' + str(deckcounts[key])
-		print total
+
 	playerlist = _generate_players(deckcounts)
 	print "{} players entered".format(len(playerlist))
-	# if verbose:
-	# 	print "\nGenerated players\nPlayer: Archetype"
-	# 	for player in playerlist.playerlist:
-	# 		print "{}: {}".format(player.id, player.archetype)
 
 	#Write a method to simulate a round now
 	#Should I just be using a DB backend?
 	rounds = int(math.ceil(math.log(len(playerlist), 2)))
-	print rounds
 
 	for round_num in xrange(rounds):
-		print "\nRound #{}".format(round_num+1)
+		if verbose:
+			print "\nRound #{}".format(round_num+1)
 		pairings = playerlist.generate_pairings()
-
-		# if verbose:
-		# 	for pair in pairings:
-		# 		print "{} vs {}".format(pair[0].id, pair[1].id)
-
 		results = playerlist.process_pairings(pairings, mudata)
-
-
 
 	standings = playerlist.generate_standings()
 	_print_standings(standings)
@@ -163,9 +168,7 @@ class PlayerList(object):
 		self.regen_pointsmap()
 		standings = []
 		for pointtotal in self.pointsmap.keys()[::-1]:
-			print "Adding points of {}: {} players".format(pointtotal, len(self.pointsmap[pointtotal]))
 			standings.extend(sorted(self.pointsmap[pointtotal], key=lambda x: x.calculate_omw(self.playerlist), reverse=True))
-			print "ID: {}".format(standings[-1].id)
 		return standings
 
 	def generate_pairings(self):
@@ -191,7 +194,7 @@ class PlayerList(object):
 
 		if paireddownplayer != "":
 			#TODO Implement BYE instead of dropping
-			print "Dropped player {}".format(paireddownplayer.id)
+			print "WARNING: Unpaired player {}".format(paireddownplayer.id)
 
 		return pairings
 
@@ -208,17 +211,20 @@ class PlayerList(object):
 				self.playerlist[p1_id].defeats(self.playerlist[p2_id])
 				points_earned[3].append(pairing[0])	#winner
 				points_earned[0].append(pairing[1]) #loser
-				print "{} defeats {} ({}/{}/{})".format(self.playerlist[p1_id].archetype, self.playerlist[p2_id].archetype, chance, p1wpct, p1wpct + p2wpct)
+				if verbose:
+					print "{}({}) defeats {}({}) ({}/{}/{})".format(self.playerlist[p1_id].archetype, p1_id, self.playerlist[p2_id].archetype, p2_id, chance, p1wpct, p1wpct + p2wpct)
 			elif p1wpct < chance <= (p1wpct + p2wpct):
 				self.playerlist[p2_id].defeats(self.playerlist[p1_id])
 				points_earned[0].append(pairing[0])	#winner
 				points_earned[3].append(pairing[1]) #loser
-				print "{} defeats {} ({}/{}/{})".format(self.playerlist[p2_id].archetype, self.playerlist[p1_id].archetype, p1wpct, chance, p1wpct + p2wpct)
+				if verbose:
+					print "{}({}) loses to {}({}) ({}/{}/{})".format(self.playerlist[p1_id].archetype, p1_id, self.playerlist[p2_id].archetype, p2_id, p1wpct, chance, p1wpct + p2wpct)
 			else:
 				self.playerlist[p2_id].draws_with(self.playerlist[p1_id])
 				points_earned[1].append(pairing[0]) #draws
 				points_earned[1].append(pairing[1])
-				print "{} draws with {} ({}/{}/{})".format(self.playerlist[p1_id].archetype, self.playerlist[p2_id].archetype, p1wpct, p1wpct + p2wpct, chance)
+				if verbose:
+					print "{}({}) draws with {}({}) ({}/{}/{})".format(self.playerlist[p1_id].archetype, p1_id, self.playerlist[p2_id].archetype, p2_id, p1wpct, p1wpct + p2wpct, chance)
 
 		return points_earned
 
@@ -239,7 +245,8 @@ def _generate_deck_counts(metashare, attendance):
 	weighted_pairs = []
 	# Assign the static counts of players first
 	for archetype in metashare:
-		print "Assigning archetype {}".format(archetype)
+		if verbose:
+			print "Assigning archetype {}".format(archetype)
 		weight = metashare[archetype]
 		if weight[0] == '#':
 			meta_dict[archetype] = int(weight[1:])
@@ -291,26 +298,26 @@ def _validate(mudata, archetypes, metashare):
 
 def _visualize_data(data, archetypes):
 	print "\nMatchup grid"
-	header = "\t"
+	header = "\t\t\t"
 	for archetype in archetypes:
 		header += archetype[:7] + "\t"
 	print header
 
 	for activeplayer in archetypes:
-		line = activeplayer[:7] + "\t"
+		line = (activeplayer+"        ")[:8] + "\t"
 		for passiveplayer in archetypes:
 			text = str(data[(activeplayer, passiveplayer)])
-			line += text + "\t"
+			line += text + "\t\t"
 		print line
 
 def _print_standings(standings):
 	print "\nStandings:"
 	print "Place\t|Points\t|OMW\t\t|Archetype"
 	for index, player in enumerate(standings):
-		print "{}:\t{}\t{}\t{} (#{})".format(index+1, player.points, player.omw, player.archetype, player.id)
+		print "{}:\t{}\t{:.4}\t{} (#{})".format(index+1, player.points, player.omw, player.archetype, player.id)
 
 def _invalid_args():
-	print "Usage: SwissSim <fileName>"
+	print "Usage: SwissSim [-v] <fileName>"
 	exit(0)
 
 if __name__ == "__main__":
