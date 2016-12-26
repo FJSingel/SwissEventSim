@@ -115,6 +115,14 @@ class Player(object):
 		opponent.losses += 1
 		opponent.opponentids.append(self.id)
 
+	def draws_with(self, opponent):
+		self.draws += 1
+		self.points += 1
+		self.opponentids.append(opponent.id)
+		opponent.draws += 1
+		opponent.points += 1
+		opponent.opponentids.append(self.id)
+
 	def calculate_omw(self, playerlist):
 		oppwins = 0
 		opplosses = 0
@@ -190,18 +198,28 @@ class PlayerList(object):
 	def process_pairings(self, pairings, mudata):
 		points_earned = {0:[], 1:[], 3:[]}
 		for pairing in pairings:
-			wpct = mudata[(pairing[0].archetype, pairing[1].archetype)]
+			chance = random.random() * 100
+			p1wpct = mudata[(pairing[0].archetype, pairing[1].archetype)]
+			p2wpct = mudata[(pairing[1].archetype, pairing[0].archetype)]
 			p1_id = pairing[0].id
 			p2_id = pairing[1].id
 
-			if random.random() <= wpct:
+			if chance <= p1wpct:
 				self.playerlist[p1_id].defeats(self.playerlist[p2_id])
 				points_earned[3].append(pairing[0])	#winner
 				points_earned[0].append(pairing[1]) #loser
-			else:
+				print "{} defeats {} ({}/{}/{})".format(self.playerlist[p1_id].archetype, self.playerlist[p2_id].archetype, chance, p1wpct, p1wpct + p2wpct)
+			elif p1wpct < chance <= (p1wpct + p2wpct):
 				self.playerlist[p2_id].defeats(self.playerlist[p1_id])
-				points_earned[3].append(pairing[1])	#winner
-				points_earned[0].append(pairing[0]) #loser
+				points_earned[0].append(pairing[0])	#winner
+				points_earned[3].append(pairing[1]) #loser
+				print "{} defeats {} ({}/{}/{})".format(self.playerlist[p2_id].archetype, self.playerlist[p1_id].archetype, p1wpct, chance, p1wpct + p2wpct)
+			else:
+				self.playerlist[p2_id].draws_with(self.playerlist[p1_id])
+				points_earned[1].append(pairing[0]) #draws
+				points_earned[1].append(pairing[1])
+				print "{} draws with {} ({}/{}/{})".format(self.playerlist[p1_id].archetype, self.playerlist[p2_id].archetype, p1wpct, p1wpct + p2wpct, chance)
+
 		return points_earned
 
 	def __len__(self):
@@ -218,7 +236,6 @@ def _generate_deck_counts(metashare, attendance):
 	meta_dict = {}
 	totalpct = 0
 	undecidedplayers = int(attendance)
-	print "{} undecided players".format(undecidedplayers)
 	weighted_pairs = []
 	# Assign the static counts of players first
 	for archetype in metashare:
@@ -232,28 +249,27 @@ def _generate_deck_counts(metashare, attendance):
 			totalpct += float(weight[:-1])
 			weighted_pairs.append((archetype, totalpct))
 
-	print "{} undecided players about to be given weighted decks".format(undecidedplayers)
+	'''
+	Meta distribution brackets looks like this (weighted_pairs)
+	('Miracles', 14.22)
+	('Lands', 18.01)
+	('Chaff', 48.34)
+	('Grixis Delver', 55.92)
+	('UR Delver', 59.71)
+	('Maverick', 62.08)
+	('BUG Delver', 65.39999999999999)
+	('Burn', 68.71999999999998)
+	('Eldrazi', 77.24999999999999)
+	('Storm', 83.40999999999998)
+	('Aluren', 85.77999999999999)
+	('Shardless BUG', 91.46999999999998)
+	('Death and Taxes', 93.83999999999999)
+	('4c Loam', 96.21)
+	('Sneak and Show', 100.0)
+	'''
+
 	for x in xrange(undecidedplayers):
 		r = random.random() * 100
-
-		'''
-		Meta distribution brackets looks like this (weighted_pairs)
-		('Miracles', 14.22)
-		('Lands', 18.01)
-		('Chaff', 48.34)
-		('Grixis Delver', 55.92)
-		('UR Delver', 59.71)
-		('Maverick', 62.08)
-		('BUG Delver', 65.39999999999999)
-		('Burn', 68.71999999999998)
-		('Eldrazi', 77.24999999999999)
-		('Storm', 83.40999999999998)
-		('Aluren', 85.77999999999999)
-		('Shardless BUG', 91.46999999999998)
-		('Death and Taxes', 93.83999999999999)
-		('4c Loam', 96.21)
-		('Sneak and Show', 100.0)
-		'''
 
 		#Cascade through dict to find the correct bracket the value belongs in
 		for archetype, ceil in weighted_pairs:
