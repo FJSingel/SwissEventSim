@@ -3,6 +3,7 @@ import copy
 import math
 import re
 import random
+import getopt
 
 #Given the percent of people playing R, P, or S generate a simulated bracket
 #Expand into being a MTG Metagame simulator?
@@ -15,11 +16,16 @@ def main(argv):
 	global verbose
 	#Parse data
 	try:
-		filename = argv[0]
-	except IndexError:
+		opts, args = getopt.getopt(argv, "v", ["OVERWRITE", "VERBOSE"])
+		filename = args[0]
+	except IndexError, getopt.GetOptError:
 		_invalid_args()
 
-	verbose = True
+	#Opt parsing
+	for opt, arg in opts:
+		if opt == "-v":
+			verbose = True
+
 	datafile = open(filename, 'r')
 	datareader = csv.reader(datafile,delimiter=',')
 	data = []
