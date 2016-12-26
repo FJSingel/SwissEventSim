@@ -5,8 +5,6 @@ import re
 import random
 import getopt
 
-#Given the percent of people playing R, P, or S generate a simulated bracket
-#Expand into being a MTG Metagame simulator?
 #IDs seems hard to simulate.
 #Have an option for a Day 2 cut and sim again?
 #Have an option for a T8 cut and sim again?
@@ -77,8 +75,6 @@ def main(argv):
 		print "\nGenerating deck counts from input"
 	deckcounts = _generate_deck_counts(metashare, attendance)
 
-	#Create player for Byes if needed
-
 	if verbose:
 		print "\nCounts of decks by archetype"
 		total = 0
@@ -117,7 +113,6 @@ class Player(object):
 		self.points = 0
 		self.opponentids = []
 		self.owm = 0
-		#Tiebreakers?
 
 	def defeats(self, opponent):
 		self.wins += 1
@@ -144,7 +139,7 @@ class Player(object):
 		return self.omw
 
 	def calculate_ogw():
-		#This is actually hard to simulate given MW%
+		#This is actually hard to simulate given MW% as input
 		pass
 
 class PlayerList(object):
@@ -318,9 +313,9 @@ def _visualize_data(data, archetypes):
 
 def _print_standings(standings):
 	print "\nStandings:"
-	print "Place\t|Points\t|OMW\t\t|Archetype"
+	print "Place |Points |OMW      |Archetype"
 	for index, player in enumerate(standings):
-		print "{}:\t{}\t{:.4}\t{} (#{})".format(index+1, player.points, player.omw, player.archetype, player.id)
+		print "{}{}{:.4}  \t {} (#{})".format(str(index+1).ljust(7), str(player.points).ljust(8), player.omw, player.archetype, player.id)
 
 def _invalid_args():
 	print "Usage: SwissSim [-v] <fileName>"
