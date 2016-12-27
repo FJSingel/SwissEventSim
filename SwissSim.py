@@ -1,3 +1,4 @@
+from __future__ import division
 import csv, sys
 import copy
 import math
@@ -12,7 +13,6 @@ verbose = False
 
 def main(argv):
 	global verbose
-	#Parse data
 	try:
 		opts, args = getopt.getopt(argv, "v", ["OVERWRITE", "VERBOSE"])
 		filename = args[0]
@@ -24,6 +24,12 @@ def main(argv):
 		if opt == "-v":
 			verbose = True
 
+	"""
+	Parse data from CSV. Example format is in project.
+	Draw pcts are encoded by having 2 win pcts totaling <100
+	Meta population is encoded with a pct share (ex: 10.25%) or a hard count (EX: #1) on the diagonal
+	Currently there are no draws for mirrors, that would require input refactoring
+	"""
 	datafile = open(filename, 'r')
 	datareader = csv.reader(datafile,delimiter=',')
 	data = []
@@ -35,6 +41,7 @@ def main(argv):
 		else:
 			assert row[0] in archetypes
 
+	#mudata will contain the matchup percentages for all archetype pairs
 	mudata = {}
 	offset = 1
 	for rowindex in xrange(1, len(data)):
@@ -60,6 +67,7 @@ def main(argv):
 
 	archetypes.append("BYE")
 
+	#Map archetype to population input
 	metashare = {}
 	for archetype in archetypes:
 		# #10 means 10 decks, 12.5% means that much of the field
@@ -73,6 +81,7 @@ def main(argv):
 
 	if verbose:
 		print "\nGenerating deck counts from input"
+	#Map Archetype to how many decks for each archetype there should be
 	deckcounts = _generate_deck_counts(metashare, attendance)
 
 	if verbose:
@@ -82,13 +91,12 @@ def main(argv):
 			total += deckcounts[key]
 			print key + ':' + str(deckcounts[key])
 
+	#Create the player objects from the meta data
 	playerlist = _generate_players(deckcounts)
 	print "{} players entered".format(len(playerlist))
 
-	#Write a method to simulate a round now
-	#Should I just be using a DB backend?
+	#Simulate the specified number of rounds
 	rounds = int(math.ceil(math.log(len(playerlist), 2)))
-
 	for round_num in xrange(rounds):
 		if verbose:
 			print "\nRound #{}".format(round_num+1)
@@ -97,6 +105,7 @@ def main(argv):
 
 	standings = playerlist.generate_standings()
 	_print_standings(standings)
+	_print_average_standings(standings)
 
 class Player(object):
 	'''
@@ -114,6 +123,9 @@ class Player(object):
 		self.opponentids = []
 		self.owm = 0
 
+	'''
+	Update this player and opponent as though this player beat the other
+	'''
 	def defeats(self, opponent):
 		self.wins += 1
 		self.points += 3
@@ -121,6 +133,9 @@ class Player(object):
 		opponent.losses += 1
 		opponent.opponentids.append(self.id)
 
+	'''
+	Update this player and opponent as though they drew
+	'''
 	def draws_with(self, opponent):
 		self.draws += 1
 		self.points += 1
@@ -129,6 +144,9 @@ class Player(object):
 		opponent.points += 1
 		opponent.opponentids.append(self.id)
 
+	'''
+	Generates the Match Win pct of all of this player's prior opponents 
+	'''
 	def calculate_omw(self, playerlist):
 		oppwins = 0
 		opplosses = 0
@@ -151,10 +169,10 @@ class PlayerList(object):
 		self.playerlist = copy.copy(playerlist)
 		self.pointsmap = {0: copy.copy(playerlist)}
 
+	'''
+	Regenerate the pointsmap from the current playerlist
+	'''
 	def regen_pointsmap(self):
-		'''
-		Regenerate the pointsmap from the current playerlist
-		'''
 		self.pointsmap = {}
 		for player in self.playerlist:
 			try:
@@ -165,6 +183,9 @@ class PlayerList(object):
 	def get_players_with_points(points):
 		return self.pointsmap[points]
 
+	'''
+	Returns a list of players sorted by Points, then OMW
+	'''
 	def generate_standings(self):
 		self.regen_pointsmap()
 		standings = []
@@ -172,6 +193,11 @@ class PlayerList(object):
 			standings.extend(sorted(self.pointsmap[pointtotal], key=lambda x: x.calculate_omw(self.playerlist), reverse=True))
 		return standings
 
+	'''
+	Generate a list of tuples of paired players with like points
+	Pairs random player down to next highest point bracket if odd number of players in bracket
+	TODO: Implement greedy pairing for last round
+	'''
 	def generate_pairings(self):
 		pairings = []
 		paireddownplayer = ""
@@ -194,11 +220,15 @@ class PlayerList(object):
 				paireddownplayer = playerpool.pop()
 
 		if paireddownplayer != "":
-			#TODO Implement BYE instead of dropping
 			print "WARNING: Unpaired player {}".format(paireddownplayer.id)
 
 		return pairings
 
+	'''
+	Take the pairs of players and the matchup data, and simulate the matches
+	Also update the players with appropriate wins/losses/points/etc
+	Return a dict mapping points to lists of players who earned those points
+	'''
 	def process_pairings(self, pairings, mudata):
 		points_earned = {0:[], 1:[], 3:[]}
 		for pairing in pairings:
@@ -232,6 +262,9 @@ class PlayerList(object):
 	def __len__(self):
 		return len(self.playerlist)
 
+'''
+Makes a list of players given a count of how many people should be on each archetype
+'''
 def _generate_players(deckcounts):
 	playerlist = []
 	for key in deckcounts:
@@ -239,6 +272,27 @@ def _generate_players(deckcounts):
 			playerlist.append(Player(key))
 	return PlayerList(playerlist)
 
+'''
+metashare: a dict of archetypes to either pct weight, or exact attendance
+attendance: how many players to create
+
+Meta distribution brackets looks like this (weighted_pairs)
+('Miracles', 14.22)
+('Lands', 18.01)
+('Chaff', 48.34)
+('Grixis Delver', 55.92)
+('UR Delver', 59.71)
+('Maverick', 62.08)
+('BUG Delver', 65.39999999999999)
+('Burn', 68.71999999999998)
+('Eldrazi', 77.24999999999999)
+('Storm', 83.40999999999998)
+('Aluren', 85.77999999999999)
+('Shardless BUG', 91.46999999999998)
+('Death and Taxes', 93.83999999999999)
+('4c Loam', 96.21)
+('Sneak and Show', 100.0)
+'''
 def _generate_deck_counts(metashare, attendance):
 	meta_dict = {}
 	totalpct = 0
@@ -257,28 +311,8 @@ def _generate_deck_counts(metashare, attendance):
 			totalpct += float(weight[:-1])
 			weighted_pairs.append((archetype, totalpct))
 
-	'''
-	Meta distribution brackets looks like this (weighted_pairs)
-	('Miracles', 14.22)
-	('Lands', 18.01)
-	('Chaff', 48.34)
-	('Grixis Delver', 55.92)
-	('UR Delver', 59.71)
-	('Maverick', 62.08)
-	('BUG Delver', 65.39999999999999)
-	('Burn', 68.71999999999998)
-	('Eldrazi', 77.24999999999999)
-	('Storm', 83.40999999999998)
-	('Aluren', 85.77999999999999)
-	('Shardless BUG', 91.46999999999998)
-	('Death and Taxes', 93.83999999999999)
-	('4c Loam', 96.21)
-	('Sneak and Show', 100.0)
-	'''
-
 	for x in xrange(undecidedplayers):
 		r = random.random() * 100
-
 		#Cascade through dict to find the correct bracket the value belongs in
 		for archetype, ceil in weighted_pairs:
 			if ceil > r:
@@ -286,6 +320,9 @@ def _generate_deck_counts(metashare, attendance):
 				break
 	return meta_dict
 
+'''
+Do basic validation on the csv input
+'''
 def _validate(mudata, archetypes, metashare):
 	totalregex = re.compile('^#\d+$') #Regex for a specific number of decks
 	pctregex = re.compile('^\d{1,2}(\.\d\d)?%$') #Regex for 
@@ -297,6 +334,9 @@ def _validate(mudata, archetypes, metashare):
 	if len(set(archetypes)) != len(archetypes):
 		raise ValueError("Duplicate archetypes given")
 
+'''
+Print the parsed input csv
+'''
 def _visualize_data(data, archetypes):
 	print "\nMatchup grid"
 	header = "\t\t\t"
@@ -311,11 +351,33 @@ def _visualize_data(data, archetypes):
 			line += text + "\t\t"
 		print line
 
+'''
+Print the sorted list of players as standings
+'''
 def _print_standings(standings):
 	print "\nStandings:"
 	print "Place |Points |OMW      |Archetype"
 	for index, player in enumerate(standings):
 		print "{}{}{:.4}  \t {} (#{})".format(str(index+1).ljust(7), str(player.points).ljust(8), player.omw, player.archetype, player.id)
+
+'''
+Print the average placement of each archetype
+'''
+def _print_average_standings(standings):
+	archtostandings = {}
+	print "\nAverage standings:"
+	for index, player in enumerate(standings):
+		try:
+			archtostandings[player.archetype].append(index+1)
+		except KeyError:
+			archtostandings[player.archetype] = [index+1]
+
+	#Convert lists to averages relative to standings
+	for archetype in archtostandings:
+		archtostandings[archetype] = (sum(archtostandings[archetype])/len(archtostandings[archetype]))/len(standings)
+	
+	for archetype in sorted(archtostandings, key=archtostandings.get):
+		print "{}{}".format(archetype.ljust(20), archtostandings[archetype])
 
 def _invalid_args():
 	print "Usage: SwissSim [-v] <fileName>"
